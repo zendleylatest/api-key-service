@@ -75,7 +75,7 @@ const server = http.createServer(async (request, response) => {
       });
     }
     return;
-  }
+  }z
 
   sendJson(response, 404, { error: 'Not found' });
 });
