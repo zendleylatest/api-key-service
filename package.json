@@ -5,7 +5,7 @@
   "description": "Small service for reading and updating an OpenAI API key.",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node --env-file=.env server.js"
   },
   "engines": {
     "node": ">=18"
