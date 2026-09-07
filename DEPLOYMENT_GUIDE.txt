@@ -1,0 +1,243 @@
+# 🚀 Node.js Deployment Guide (DigitalOcean)
+
+This guide deploys the **OpenAI API Key Service** to a DigitalOcean Droplet using **PM2**, **Nginx**, and **Certbot**.
+
+> **Prerequisites:** A DigitalOcean Droplet running Ubuntu, a domain pointed to the Droplet, and SSH access.
+
+---
+
+## 1. Clone the Repository
+
+```bash
+git clone https://github.com/username/your_project_repo.git
+cd your_project_repo
+```
+
+---
+
+## 2. Install Dependencies
+
+```bash
+npm install
+```
+
+---
+
+## 3. Configure Environment Variables
+
+Create the environment file:
+
+```bash
+nano .env
+```
+
+Add the following values:
+
+```env
+PORT=5980
+OPENAI_API_KEY=sk-your-openai-api-key
+ADMIN_TOKEN=replace-with-a-strong-secret-token
+```
+
+> ⚠️ Never commit `.env` or expose these secrets publicly.
+
+---
+
+## 4. Test the Server
+
+```bash
+npm start
+```
+
+Test the health endpoint from another terminal:
+
+```bash
+curl http://localhost:5980/health
+```
+
+Expected response:
+
+```json
+{"status":"ok"}
+```
+
+If everything works, press `Ctrl+C` to stop the test server.
+
+---
+
+## 5. Install and Configure PM2
+
+Install PM2 globally:
+
+```bash
+sudo npm install -g pm2
+```
+
+Start the service through its npm start command:
+
+```bash
+pm2 start npm --name openai-key-service -- start
+pm2 save
+pm2 startup
+```
+
+> Run the additional command printed by `pm2 startup` to enable PM2 after a reboot.
+
+Check the service:
+
+```bash
+pm2 status
+pm2 logs openai-key-service
+```
+
+---
+
+## 6. Configure the Firewall
+
+Allow SSH, HTTP, and HTTPS:
+
+```bash
+sudo ufw allow OpenSSH
+sudo ufw allow 'Nginx Full'
+sudo ufw enable
+sudo ufw status
+```
+
+> Nginx proxies requests to port `5980` locally, so that port does not need to be publicly exposed.
+
+---
+
+## 7. Install Nginx
+
+```bash
+sudo apt update
+sudo apt install -y nginx
+```
+
+---
+
+## 8. Configure Nginx
+
+Create a site configuration:
+
+```bash
+sudo nano /etc/nginx/sites-available/openai-key-service
+```
+
+Paste this configuration:
+
+```nginx
+server {
+    listen 80;
+    listen [::]:80;
+
+    server_name openaikeysecret.oxmite.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:5980;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+---
+
+## 9. Enable the Nginx Configuration
+
+```bash
+sudo ln -s /etc/nginx/sites-available/openai-key-service /etc/nginx/sites-enabled/openai-key-service
+sudo nginx -t
+sudo systemctl restart nginx
+```
+
+If the default Nginx page conflicts with your site, disable it:
+
+```bash
+sudo unlink /etc/nginx/sites-enabled/default
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+---
+
+## 10. Configure Domain DNS
+
+Create this DNS record with your domain provider:
+
+| Type | Host | Value |
+|------|------|-------|
+| A | `openaikeysecret` | `YOUR_DROPLET_IP` |
+
+Wait for DNS propagation, then verify it:
+
+```bash
+dig +short openaikeysecret.oxmite.com
+```
+
+---
+
+## 11. Enable HTTPS with Certbot
+
+```bash
+sudo apt install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d openaikeysecret.oxmite.com
+```
+
+Test automatic certificate renewal:
+
+```bash
+sudo certbot renew --dry-run
+```
+
+---
+
+## ✅ Deployment Complete
+
+Open the health endpoint:
+
+<https://openaikeysecret.oxmite.com/health>
+
+Expected response:
+
+```json
+{"status":"ok"}
+```
+
+---
+
+## 🛠 Troubleshooting
+
+### Check PM2
+
+```bash
+pm2 status
+pm2 logs openai-key-service
+```
+
+### Check the application port
+
+```bash
+sudo ss -ltnp | grep 5980
+curl http://127.0.0.1:5980/health
+```
+
+### Check Nginx
+
+```bash
+sudo nginx -t
+sudo systemctl status nginx
+sudo tail -n 100 /var/log/nginx/error.log
+```
+
+### Restart the services
+
+```bash
+pm2 restart openai-key-service
+sudo systemctl restart nginx
+```
+
+> 🔐 **Security note:** The current `GET /api-key` route returns the API key without authentication. Restrict this service to trusted clients before exposing it publicly.
